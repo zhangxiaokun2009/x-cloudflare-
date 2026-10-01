@@ -1,0 +1,18 @@
+反向代理/                          ← 项目根目录（你的 C:\Users\win10\Desktop\2\反向代理） (Project root directory (your C:\Users\win10\Desktop\2\反向代理))
+│
+├── functions/                     ← 边缘函数目录（和 public 同级） (Edge functions directory (same level as public))
+│   ├── _middleware.js             ← 全局中间件，负责生成 cfall.json (Global middleware, responsible for generating cfall.json)
+│   └── proxy/
+│       └── [[path]].js            ← 反向代理 X 媒体 CDN (Reverse proxy for X media CDN)
+│
+├── public/                        ← 静态资源目录（部署后就是网站根） (Static assets directory (becomes the website root after deployment))
+│   ├── all.json                   ← 爬虫后数据整理产出的原始数据（X 原始链接） (Raw data produced by post-crawler data processing (X original links))
+│   └── index.html                 ← 抖音风格前端 (Douyin-style frontend)
+│
+└── _routes.json                   ← 路由控制 (Route control)
+
+
+注：1.middleware.js有优化，添加自定义域名后他会根据你的访问域名自动生成新的域名的cfall.js里面的链接会自适应更改
+(Note: 1. middleware.js has been optimized; after adding a custom domain, it will automatically generate a new cfall.js based on your access domain, and the links inside will adapt automatically.)
+2.二开发或者想单纯要反向代理后的链接可以不上传index.html直接删除就可以了。然后访问一次https://你的域名/cfall.json,直接复制就可以了
+(2. For secondary development, or if you only want the reverse-proxied links, you can simply not upload index.html or delete it directly. Then visit https://your-domain/cfall.json once and copy the content directly.)
