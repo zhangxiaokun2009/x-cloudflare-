@@ -1,0 +1,1133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>X  · 短视频</title>
+<style>
+  :root {
+    --bg: #000;
+    --fg: #fff;
+    --accent: #fe2c55;
+    --sub: rgba(255,255,255,.7);
+    --glass: rgba(20,20,22,.55);
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --safe-t: env(safe-area-inset-top, 0px);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body {
+    width:100%; height:100%; overflow:hidden;
+    background:var(--bg); color:var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", Roboto, sans-serif;
+    overscroll-behavior:none;
+  }
+  body { position:fixed; inset:0; }
+
+  /* ============ 顶部栏 ============ */
+  .topbar {
+    position:fixed; top:0; left:0; right:0; z-index:50;
+    padding: calc(var(--safe-t) + 10px) 14px 10px;
+    display:flex; align-items:center; gap:10px;
+    background: linear-gradient(180deg, rgba(0,0,0,.65) 0%, rgba(0,0,0,.25) 60%, transparent 100%);
+    pointer-events:none;
+  }
+  .topbar > * { pointer-events:auto; }
+  .brand {
+    font-size:17px; font-weight:800; letter-spacing:.5px;
+    display:flex; align-items:center; gap:6px; flex-shrink:0;
+    text-shadow:0 1px 6px rgba(0,0,0,.6);
+  }
+  .brand .dot { width:8px; height:8px; border-radius:50%; background:var(--accent); box-shadow:0 0 10px var(--accent); }
+  .search-trigger {
+    flex:1; min-width:0; height:36px; border-radius:18px;
+    background: var(--glass); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+    border:1px solid rgba(255,255,255,.1);
+    display:flex; align-items:center; gap:8px; padding:0 14px;
+    color:var(--sub); font-size:13.5px; cursor:pointer;
+    transition: background .2s;
+  }
+  .search-trigger span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .search-trigger:active { background: rgba(40,40,44,.7); }
+  .icon-btn {
+    width:36px; height:36px; border-radius:50%;
+    background: var(--glass); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+    border:1px solid rgba(255,255,255,.1);
+    display:flex; align-items:center; justify-content:center;
+    color:#fff; cursor:pointer; flex-shrink:0;
+    transition: transform .15s, background .2s;
+  }
+  .icon-btn:active { transform: scale(.9); background: rgba(40,40,44,.8); }
+  .icon-btn.lang { font-size:12px; font-weight:800; letter-spacing:.3px; }
+
+  /* ============ 视频容器 ============ */
+  .feed {
+    position:fixed; inset:0;
+    overflow-y:scroll; overflow-x:hidden;
+    scroll-snap-type: y mandatory;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+  }
+  .feed::-webkit-scrollbar { display:none; }
+
+  .slide {
+    position:relative;
+    width:100%; height:100%;
+    scroll-snap-align:start; scroll-snap-stop:always;
+    display:flex; align-items:center; justify-content:center;
+    background:#000; overflow:hidden;
+    contain: layout paint size;
+  }
+  .slide video {
+    position:absolute; inset:0;
+    width:100%; height:100%;
+    object-fit:contain;
+    background:#000;
+    opacity:0; transition: opacity .35s ease;
+  }
+  .slide video.ready { opacity:1; }
+
+  /* 封面占位 */
+  .poster {
+    position:absolute; inset:0;
+    width:100%; height:100%;
+    object-fit:cover;
+    filter: blur(0px);
+    transition: opacity .35s ease;
+    background:#0a0a0a;
+  }
+  .poster.hide { opacity:0; pointer-events:none; }
+
+  /* 中央播放按钮 */
+  .play-overlay {
+    position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    pointer-events:none; opacity:0; transition:opacity .2s;
+    z-index:5;
+  }
+  .play-overlay.show { opacity:1; }
+  .play-overlay .ring {
+    width:82px; height:82px; border-radius:50%;
+    background: rgba(0,0,0,.45); backdrop-filter: blur(6px);
+    display:flex; align-items:center; justify-content:center;
+    border:2px solid rgba(255,255,255,.35);
+  }
+  .play-overlay.paused .ring { animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse {
+    0%,100% { transform:scale(1); box-shadow:0 0 0 0 rgba(255,255,255,.25); }
+    50% { transform:scale(1.06); box-shadow:0 0 0 16px rgba(255,255,255,0); }
+  }
+
+  /* 加载圈 */
+  .spinner {
+    position:absolute; z-index:6;
+    width:40px; height:40px; border-radius:50%;
+    border:3px solid rgba(255,255,255,.18);
+    border-top-color:#fff;
+    animation: spin .8s linear infinite;
+    display:none;
+  }
+  .slide.loading .spinner { display:block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ============ 底部信息 ============ */
+  .meta {
+    position:absolute; left:0; right:80px; bottom:0; z-index:10;
+    padding: 60px 16px calc(var(--safe-b) + 20px) 16px;
+    background: linear-gradient(0deg, rgba(0,0,0,.85) 0%, rgba(0,0,0,.4) 55%, transparent 100%);
+    pointer-events:none;
+  }
+  .meta .row { pointer-events:auto; }
+  .author {
+    display:flex; align-items:center; gap:8px; margin-bottom:10px;
+  }
+  .avatar {
+    width:34px; height:34px; border-radius:50%;
+    background: linear-gradient(135deg,#fe2c55,#7b2ff7);
+    display:flex; align-items:center; justify-content:center;
+    font-weight:700; font-size:14px; flex-shrink:0;
+    border:1.5px solid rgba(255,255,255,.85);
+  }
+  .author .name { font-weight:700; font-size:14.5px; text-shadow:0 1px 4px rgba(0,0,0,.6); }
+  .desc {
+    font-size:14px; line-height:1.45; color:#fff;
+    text-shadow:0 1px 4px rgba(0,0,0,.6);
+    display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;
+    overflow:hidden; margin-bottom:10px;
+    cursor:pointer; word-break: break-word;
+  }
+  .desc.expanded { -webkit-line-clamp:unset; }
+  .tags { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px; }
+  .tag {
+    font-size:12px; color:#7fdcff;
+    background:rgba(0,0,0,.35); padding:3px 9px; border-radius:10px;
+    backdrop-filter: blur(8px);
+  }
+  .idx {
+    font-size:11.5px; color:var(--sub); margin-top:4px;
+    display:flex; align-items:center; gap:6px;
+  }
+
+  /* ============ 右侧操作栏 ============ */
+  .actions {
+    position:absolute; right:8px; bottom: calc(var(--safe-b) + 30px); z-index:10;
+    display:flex; flex-direction:column; align-items:center; gap:18px;
+  }
+  .act {
+    display:flex; flex-direction:column; align-items:center; gap:4px;
+    color:#fff; cursor:pointer; user-select:none;
+    transition: transform .15s;
+  }
+  .act:active { transform: scale(.88); }
+  .act .circle {
+    width:46px; height:46px; border-radius:50%;
+    background: rgba(28,28,32,.6); backdrop-filter: blur(14px);
+    border:1px solid rgba(255,255,255,.12);
+    display:flex; align-items:center; justify-content:center;
+    transition: background .2s, border-color .2s;
+  }
+  .act.on .circle { background: var(--accent); border-color: var(--accent); }
+  .act span { font-size:11px; text-shadow:0 1px 3px rgba(0,0,0,.7); font-weight:600; }
+  .act svg { width:22px; height:22px; }
+
+  /* ============ 进度条 ============ */
+  .progress {
+    position:absolute; left:0; right:0; bottom:0; height:2.5px;
+    background: rgba(255,255,255,.15); z-index:11; overflow:hidden;
+  }
+  .progress .bar {
+    height:100%; width:0%;
+    background: linear-gradient(90deg,#fe2c55,#ff7a9c);
+    transition: width .1s linear;
+  }
+
+  /* ============ 搜索面板 ============ */
+  .search-panel {
+    position:fixed; inset:0; z-index:100;
+    background: rgba(8,8,10,.97); backdrop-filter: blur(24px);
+    display:flex; flex-direction:column;
+    transform: translateY(-100%); opacity:0;
+    transition: transform .32s cubic-bezier(.32,.72,0,1), opacity .28s;
+    pointer-events:none;
+  }
+  .search-panel.open { transform: translateY(0); opacity:1; pointer-events:auto; }
+  .search-head {
+    padding: calc(var(--safe-t) + 12px) 14px 12px;
+    display:flex; align-items:center; gap:10px;
+    border-bottom:1px solid rgba(255,255,255,.08);
+  }
+  .search-input-wrap {
+    flex:1; height:40px; border-radius:20px;
+    background: rgba(255,255,255,.08);
+    display:flex; align-items:center; gap:8px; padding:0 14px;
+    border:1px solid rgba(255,255,255,.1);
+  }
+  .search-input-wrap input {
+    flex:1; background:none; border:none; outline:none;
+    color:#fff; font-size:15px;
+  }
+  .search-input-wrap input::placeholder { color: rgba(255,255,255,.4); }
+  .cancel-btn {
+    color:#fff; font-size:15px; font-weight:500;
+    padding:6px 4px; cursor:pointer; flex-shrink:0;
+  }
+
+  .search-body { flex:1; overflow-y:auto; padding:8px 0 40px; }
+  .search-body::-webkit-scrollbar { width:4px; }
+  .search-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius:2px; }
+
+  .search-hint {
+    padding: 24px 20px; color: rgba(255,255,255,.4); font-size:13.5px; line-height:1.7;
+  }
+  .search-hint b { color:#fff; font-weight:600; }
+
+  .result-item {
+    display:flex; gap:12px; padding:10px 16px;
+    cursor:pointer; transition: background .15s;
+    align-items:flex-start;
+  }
+  .result-item:active { background: rgba(255,255,255,.06); }
+  .result-thumb {
+    width:72px; height:96px; border-radius:8px; flex-shrink:0;
+    object-fit:cover; background:#1a1a1a;
+  }
+  .result-info { flex:1; min-width:0; padding-top:2px; }
+  .result-title {
+    font-size:14px; line-height:1.4; color:#fff;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+    margin-bottom:6px;
+  }
+  .result-meta {
+    font-size:12px; color: rgba(255,255,255,.4);
+    display:flex; align-items:center; gap:8px;
+  }
+  .result-meta .hl { color: #ffd166; }
+  .empty {
+    text-align:center; padding:60px 20px; color: rgba(255,255,255,.35); font-size:14px;
+  }
+
+  /* ============ 首屏提示 ============ */
+  .splash {
+    position:fixed; inset:0; z-index:200; background:#000;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:22px;
+    transition: opacity .45s ease;
+  }
+  .splash.hide { opacity:0; pointer-events:none; }
+  .splash .logo {
+    font-size:36px; font-weight:900; letter-spacing:-1px;
+    background: linear-gradient(135deg,#fe2c55,#ff7a9c 50%,#7b2ff7);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .splash .tip { font-size:13px; color:rgba(255,255,255,.4); text-align:center; padding:0 24px; }
+  .splash .ring {
+    width:34px; height:34px; border-radius:50%;
+    border:3px solid rgba(255,255,255,.12);
+    border-top-color: var(--accent);
+    animation: spin .9s linear infinite;
+  }
+
+  /* 小屏适配 */
+  @media (max-width: 480px) {
+    .meta { right:70px; padding-left:12px; }
+    .act .circle { width:42px; height:42px; }
+    .act svg { width:20px; height:20px; }
+    .brand { font-size:15px; }
+  }
+  /* 大屏居中留黑边 */
+  @media (min-width: 900px) {
+    .feed { max-width: 520px; margin:0 auto; box-shadow: 0 0 80px rgba(0,0,0,.9); }
+    .topbar { max-width: 520px; margin:0 auto; }
+    .search-panel { max-width: 520px; left:50%; transform: translate(-50%,-100%); }
+    .search-panel.open { transform: translate(-50%,0); }
+  }
+</style>
+</head>
+<body>
+
+<!-- 首屏 -->
+<div class="splash" id="splash">
+  <div class="logo">X · Reels</div>
+  <div class="ring"></div>
+  <div class="tip" id="splashTip">正在加载视频库…</div>
+</div>
+
+<!-- 顶部栏 -->
+<div class="topbar">
+  <div class="brand"><span class="dot"></span>Reels</div>
+  <div class="search-trigger" id="searchTrigger">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+      <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>
+    </svg>
+    <span id="searchTriggerText">搜索视频标题…</span>
+  </div>
+  <div class="icon-btn lang" id="langBtn" title="Switch to English">
+    <span id="langBtnText">EN</span>
+  </div>
+  <div class="icon-btn" id="shuffleBtn" title="换一批">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M16 3h5v5"/><path d="M4 20L21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/>
+    </svg>
+  </div>
+</div>
+
+<!-- 视频流 -->
+<div class="feed" id="feed"></div>
+
+<!-- 搜索面板 -->
+<div class="search-panel" id="searchPanel">
+  <div class="search-head">
+    <div class="search-input-wrap">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="2.4" stroke-linecap="round">
+        <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>
+      </svg>
+      <input id="searchInput" type="text" placeholder="搜索视频标题、关键词…" autocomplete="off" enterkeyhint="search">
+      <svg id="clearBtn" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="2.4" stroke-linecap="round" style="display:none;cursor:pointer">
+        <path d="M18 6L6 18M6 6l12 12"/>
+      </svg>
+    </div>
+    <div class="cancel-btn" id="cancelBtn">取消</div>
+  </div>
+  <div class="search-body" id="searchBody">
+    <div class="search-hint">
+      输入关键词搜索视频标题<br>
+      共 <b id="totalCount">0</b> 条视频可供搜索
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
+<script>
+/* ============================================================
+ *  X Video Reels —— 短视频流（中英双语）
+ * ============================================================ */
+(() => {
+  'use strict';
+
+  const $ = (s) => document.querySelector(s);
+  const feed          = $('#feed');
+  const splash        = $('#splash');
+  const searchPanel   = $('#searchPanel');
+  const searchInput   = $('#searchInput');
+  const searchBody    = $('#searchBody');
+  const searchTrigger = $('#searchTrigger');
+  const searchTriggerText = $('#searchTriggerText');
+  const clearBtn      = $('#clearBtn');
+  const cancelBtn     = $('#cancelBtn');
+  const shuffleBtn    = $('#shuffleBtn');
+  const langBtn       = $('#langBtn');
+  const langBtnText   = $('#langBtnText');
+
+  // ============================================================
+  //  i18n 文案
+  // ============================================================
+  const I18N = {
+    zh: {
+      htmlLang: 'zh-CN',
+      docTitle: 'X · 短视频',
+      splashTip: '正在加载视频库…',
+      loadFail: (m) => '加载 cfall.json 失败：' + m,
+      loadFailHint: '请确认 cfall.json 已上传',
+      emptyData: 'cfall.json 里没有任何视频',
+      searchTrigger: '搜索视频标题…',
+      searchPlaceholder: '搜索视频标题、关键词…',
+      cancel: '取消',
+      hintTitle: '输入关键词搜索视频标题',
+      hintCount: (n) => `共 <b>${n}</b> 条视频可供搜索`,
+      noResult: (kw) => `没有找到包含「${kw}」的视频<br>换个关键词试试`,
+      matches: (n) => `匹配到 ${n} 条`,
+      found: (n) => `找到 ${n} 条结果`,
+      actCopy: '复制',
+      actOpen: '原链',
+      muted: '静音',
+      unmuted: '有声',
+      untitled: '无标题',
+      copied: '已复制视频直链',
+      copyFail: '复制失败，请长按链接',
+      shuffled: '已换一批',
+      playingResult: (n) => `播放搜索结果中的第 ${n} 条`,
+      langLabel: 'EN',
+      langTitle: '已切换到中文',
+      langSwitched: '已切换到中文',
+      shuffleTitle: '换一批',
+    },
+    en: {
+      htmlLang: 'en',
+      docTitle: 'X · Shorts',
+      splashTip: 'Loading video library…',
+      loadFail: (m) => 'Failed to load cfall.json: ' + m,
+      loadFailHint: 'Please make sure cfall.json is uploaded',
+      emptyData: 'No videos found in cfall.json',
+      searchTrigger: 'Search video titles…',
+      searchPlaceholder: 'Search titles or keywords…',
+      cancel: 'Cancel',
+      hintTitle: 'Type a keyword to search video titles',
+      hintCount: (n) => `<b>${n}</b> videos available for search`,
+      noResult: (kw) => `No videos found for “${kw}”<br>Try another keyword`,
+      matches: (n) => `${n} matches`,
+      found: (n) => `${n} results`,
+      actCopy: 'Copy',
+      actOpen: 'Source',
+      muted: 'Mute',
+      unmuted: 'Sound',
+      untitled: 'Untitled',
+      copied: 'Link copied',
+      copyFail: 'Copy failed, long-press the link',
+      shuffled: 'Shuffled',
+      playingResult: (n) => `Playing result #${n}`,
+      langLabel: '中',
+      langTitle: 'Switch to English',
+      langSwitched: 'Switched to English',
+      shuffleTitle: 'Shuffle',
+    },
+  };
+
+  // ---------- 全局状态 ----------
+  const STATE = {
+    lang: 'zh',
+    all: [],           // 全量数据
+    pool: [],          // 当前播放池
+    pageSize: 12,      // 每次追加条数
+    loaded: 0,         // 已渲染条数
+    searching: false,
+    keyword: '',
+    playing: null,     // 当前正在播放的 slide
+  };
+
+  const t = (key, ...args) => {
+    const dict = I18N[STATE.lang] || I18N.zh;
+    const v = dict[key];
+    return typeof v === 'function' ? v(...args) : (v == null ? '' : v);
+  };
+
+  // ============================================================
+  //  工具函数
+  // ============================================================
+  const proxyUrl = (raw) => {
+    if (!raw) return '';
+    return raw;   // cfall.json 里已经是完整可用的代理 URL
+  };
+
+  const isM3u8 = (url) => /\.m3u8(\?|$)/i.test(url) || /mpegurl/i.test(url);
+
+  const shuffle = (arr) => {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  };
+
+  const escapeHtml = (s) =>
+    String(s || '').replace(/[&<>"']/g, (c) => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[c]));
+
+  // 从标题里提取 #话题
+  const extractTags = (text) => {
+    const m = String(text || '').match(/#[\w\u4e00-\u9fa5]+/g);
+    return m ? m.slice(0, 4) : [];
+  };
+
+  // 高亮搜索词
+  const highlight = (text, kw) => {
+    const safe = escapeHtml(text);
+    if (!kw) return safe;
+    const re = new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    return safe.replace(re, (m) => `<span class="hl">${m}</span>`);
+  };
+
+  // ============================================================
+  //  语言切换
+  // ============================================================
+  function applyLanguage(lang) {
+    if (!I18N[lang]) lang = 'zh';
+    STATE.lang = lang;
+
+    try { localStorage.setItem('reels_lang', lang); } catch (e) {}
+
+    document.documentElement.setAttribute('lang', I18N[lang].htmlLang);
+    document.title = t('docTitle');
+
+    searchTriggerText.textContent = t('searchTrigger');
+    searchInput.placeholder = t('searchPlaceholder');
+    cancelBtn.textContent = t('cancel');
+    shuffleBtn.title = t('shuffleTitle');
+    langBtnText.textContent = t('langLabel');
+    langBtn.title = t('langTitle');
+
+    const tipEl = splash.querySelector('#splashTip');
+    if (tipEl) tipEl.textContent = t('splashTip');
+
+    // 更新已渲染的 slide 文案
+    feed.querySelectorAll('.slide').forEach(updateSlideLang);
+
+    // 搜索面板开着时同步刷新
+    if (searchPanel.classList.contains('open')) {
+      if (STATE.keyword) doSearch(STATE.keyword);
+      else renderSearchHint();
+    }
+  }
+
+  function updateSlideLang(slide) {
+    const copySpan = slide.querySelector('.act-copy span');
+    if (copySpan) copySpan.textContent = t('actCopy');
+
+    const openSpan = slide.querySelector('.act-open span');
+    if (openSpan) openSpan.textContent = t('actOpen');
+
+    const muteLabel = slide.querySelector('.mute-label');
+    if (muteLabel) muteLabel.textContent = slide._muted ? t('muted') : t('unmuted');
+
+    const desc = slide.querySelector('.desc');
+    if (desc && !String(slide._data?.title || '').trim()) desc.textContent = t('untitled');
+  }
+
+  // ============================================================
+  //  数据加载
+  // ============================================================
+  async function loadData() {
+    try {
+      const res = await fetch('./cfall.json');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      STATE.all = (Array.isArray(data) ? data : []).filter((it) => {
+        return it && it.video_url && String(it.video_url).trim();
+      });
+      return true;
+    } catch (e) {
+      console.error('加载 cfall.json 失败', e);
+      splash.innerHTML =
+        '<div class="logo">X · Reels</div>' +
+        '<div class="tip" style="color:#ff7a9c">' + escapeHtml(t('loadFail', e.message)) + '</div>' +
+        '<div class="tip">' + escapeHtml(t('loadFailHint')) + '</div>';
+      return false;
+    }
+  }
+
+  // ============================================================
+  //  渲染单条 slide
+  // ============================================================
+  let slideSeq = 0;
+
+  function buildSlide(item, index) {
+    const slide = document.createElement('div');
+    slide.className = 'slide';
+    slide.dataset.index = index;
+    slide.dataset.seq = ++slideSeq;
+
+    const poster = proxyUrl(item.cover || '');
+    const tags   = extractTags(item.title);
+    const initial = (item.title || 'X').trim().charAt(0).toUpperCase() || 'X';
+
+    slide.innerHTML = `
+      ${poster ? `<img class="poster" src="${poster}" alt="" loading="lazy" onerror="this.style.display='none'">` : ''}
+      <video playsinline webkit-playsinline preload="none" loop muted></video>
+      <div class="spinner"></div>
+      <div class="play-overlay paused">
+        <div class="ring">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"/></svg>
+        </div>
+      </div>
+
+      <div class="meta">
+        <div class="row author">
+          <div class="avatar">${escapeHtml(initial)}</div>
+          <div class="name">@x_video</div>
+        </div>
+        <div class="desc row">${escapeHtml(item.title || t('untitled'))}</div>
+        ${tags.length ? `<div class="tags">${tags.map(x => `<span class="tag">${escapeHtml(x)}</span>`).join('')}</div>` : ''}
+        <div class="idx">#${index + 1} / ${STATE.pool.length}</div>
+      </div>
+
+      <div class="actions">
+        <div class="act act-copy" data-act="copy">
+          <div class="circle">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="12" height="12" rx="2"/>
+              <path d="M5 15V5a2 2 0 0 1 2-2h10"/>
+            </svg>
+          </div>
+          <span>${t('actCopy')}</span>
+        </div>
+
+        <div class="act act-open" data-act="open">
+          <div class="circle">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+              <path d="M15 3h6v6"/><path d="M10 14L21 3"/>
+            </svg>
+          </div>
+          <span>${t('actOpen')}</span>
+        </div>
+
+        <div class="act act-mute" data-act="mute">
+          <div class="circle">
+            <svg class="ico-mute" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M11 5L6 9H2v6h4l5 4V5z"/>
+              <path d="M22 9l-6 6M16 9l6 6"/>
+            </svg>
+            <svg class="ico-sound" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+              <path d="M11 5L6 9H2v6h4l5 4V5z"/>
+              <path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/>
+            </svg>
+          </div>
+          <span class="mute-label">${t('muted')}</span>
+        </div>
+      </div>
+
+      <div class="progress"><div class="bar"></div></div>
+    `;
+
+    const video    = slide.querySelector('video');
+    const posterEl = slide.querySelector('.poster');
+    const overlay  = slide.querySelector('.play-overlay');
+    const spinner  = slide.querySelector('.spinner');
+    const bar      = slide.querySelector('.bar');
+
+    slide._data   = item;
+    slide._video  = video;
+    slide._poster = posterEl;
+    slide._overlay = overlay;
+    slide._bar    = bar;
+    slide._hls    = null;
+    slide._inited = false;
+    slide._muted  = true;
+
+    // ---------- 视频事件 ----------
+    video.addEventListener('loadeddata', () => {
+      video.classList.add('ready');
+      slide.classList.remove('loading');
+      if (posterEl) posterEl.classList.add('hide');
+    });
+
+    video.addEventListener('waiting', () => slide.classList.add('loading'));
+    video.addEventListener('playing', () => {
+      slide.classList.remove('loading');
+      overlay.classList.remove('show', 'paused');
+    });
+    video.addEventListener('pause', () => {
+      overlay.classList.add('show', 'paused');
+    });
+    video.addEventListener('timeupdate', () => {
+      if (!video.duration) return;
+      bar.style.width = (video.currentTime / video.duration) * 100 + '%';
+    });
+    video.addEventListener('error', () => {
+      slide.classList.remove('loading');
+      console.warn('视频播放失败', item.video_url);
+    });
+
+    // ---------- 点击暂停/播放 ----------
+    slide.addEventListener('click', (e) => {
+      if (e.target.closest('.actions') || e.target.closest('.meta .row')) return;
+      if (video.paused) video.play().catch(() => {});
+      else video.pause();
+    });
+
+    // ---------- 右侧操作 ----------
+    slide.querySelector('.act-copy').addEventListener('click', (e) => {
+      e.stopPropagation();
+      copyLink(item.video_url);
+    });
+    slide.querySelector('.act-open').addEventListener('click', (e) => {
+      e.stopPropagation();
+      window.open(item.video_url, '_blank', 'noopener');
+    });
+    slide.querySelector('.act-mute').addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleMute(slide);
+    });
+
+    // ---------- 展开/收起描述 ----------
+    const desc = slide.querySelector('.desc');
+    desc.addEventListener('click', (e) => {
+      e.stopPropagation();
+      desc.classList.toggle('expanded');
+    });
+
+    return slide;
+  }
+
+  // ---------- 首次初始化视频源 ----------
+  function initVideo(slide) {
+    if (slide._inited) return;
+    slide._inited = true;
+
+    const item  = slide._data;
+    const video = slide._video;
+    const raw   = item.video_url;
+
+    if (isM3u8(raw) && window.Hls && Hls.isSupported()) {
+      const hls = new Hls({
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
+        enableWorker: true,
+        lowLatencyMode: false,
+      });
+      hls.loadSource(proxyUrl(raw));
+      hls.attachMedia(video);
+      hls.on(Hls.Events.ERROR, (_, data) => {
+        if (data.fatal) {
+          switch (data.type) {
+            case Hls.ErrorTypes.NETWORK_ERROR: hls.startLoad(); break;
+            case Hls.ErrorTypes.MEDIA_ERROR:   hls.recoverMediaError(); break;
+            default: hls.destroy(); break;
+          }
+        }
+      });
+      slide._hls = hls;
+    } else {
+      // Safari 原生支持 m3u8，直接 src
+      video.src = proxyUrl(raw);
+    }
+  }
+
+  // ---------- 播放控制 ----------
+  function playSlide(slide) {
+    if (!slide) return;
+    initVideo(slide);
+    const video = slide._video;
+
+    if (STATE.playing && STATE.playing !== slide) {
+      const prev = STATE.playing._video;
+      try { prev.pause(); } catch (e) {}
+      STATE.playing._overlay.classList.add('show', 'paused');
+    }
+    STATE.playing = slide;
+
+    video.muted = slide._muted;
+    const p = video.play();
+    if (p && p.catch) p.catch(() => {
+      slide._overlay.classList.add('show', 'paused');
+    });
+  }
+
+  function toggleMute(slide) {
+    slide._muted = !slide._muted;
+    slide._video.muted = slide._muted;
+
+    const muteIco  = slide.querySelector('.ico-mute');
+    const soundIco = slide.querySelector('.ico-sound');
+    const label    = slide.querySelector('.mute-label');
+    const act      = slide.querySelector('.act-mute');
+
+    if (slide._muted) {
+      muteIco.style.display = '';
+      soundIco.style.display = 'none';
+      label.textContent = t('muted');
+      act.classList.remove('on');
+    } else {
+      muteIco.style.display = 'none';
+      soundIco.style.display = '';
+      label.textContent = t('unmuted');
+      act.classList.add('on');
+    }
+  }
+
+  async function copyLink(url) {
+    try {
+      await navigator.clipboard.writeText(url);
+      toast(t('copied'));
+    } catch (e) {
+      toast(t('copyFail'));
+    }
+  }
+
+  // ---------- 轻提示 ----------
+  let toastTimer = null;
+  function toast(msg) {
+    let el = document.getElementById('__toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = '__toast';
+      el.style.cssText = `
+        position:fixed; left:50%; top:50%; z-index:999;
+        transform: translate(-50%,-50%);
+        background: rgba(0,0,0,.82); color:#fff;
+        padding:10px 18px; border-radius:10px;
+        font-size:13.5px; pointer-events:none;
+        opacity:0; transition: opacity .25s;
+        backdrop-filter: blur(10px);
+        max-width: 78vw; text-align:center;
+      `;
+      document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.style.opacity = '1';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.style.opacity = '0'; }, 1400);
+  }
+
+  // ============================================================
+  //  批量追加 + 无限滚动
+  // ============================================================
+  function appendBatch() {
+    const start = STATE.loaded;
+    const end = Math.min(start + STATE.pageSize, STATE.pool.length);
+    if (start >= end) return;
+
+    const frag = document.createDocumentFragment();
+    for (let i = start; i < end; i++) {
+      frag.appendChild(buildSlide(STATE.pool[i], i));
+    }
+    feed.appendChild(frag);
+    STATE.loaded = end;
+
+    if (start === 0) {
+      splash.classList.add('hide');
+      setTimeout(() => splash.remove(), 500);
+      requestAnimationFrame(() => {
+        const first = feed.querySelector('.slide');
+        if (first) playSlide(first);
+      });
+    }
+  }
+
+  // ============================================================
+  //  IntersectionObserver —— 自动播放当前可见的视频
+  // ============================================================
+  const io = new IntersectionObserver((entries) => {
+    let best = null;
+    for (const e of entries) {
+      if (e.isIntersecting) {
+        if (!best || e.intersectionRatio > best.intersectionRatio) best = e;
+      }
+    }
+    if (best && best.intersectionRatio > 0.6) {
+      playSlide(best.target);
+    }
+  }, { root: feed, threshold: [0, 0.3, 0.6, 0.9] });
+
+  const mo = new MutationObserver((records) => {
+    for (const r of records) {
+      r.addedNodes.forEach((n) => {
+        if (n.nodeType === 1 && n.classList.contains('slide')) io.observe(n);
+      });
+    }
+  });
+  mo.observe(feed, { childList: true });
+
+  // ============================================================
+  //  滚动到底自动追加
+  // ============================================================
+  let appendLock = false;
+  feed.addEventListener('scroll', () => {
+    if (appendLock) return;
+    const remain = feed.scrollHeight - feed.scrollTop - feed.clientHeight;
+    if (remain < feed.clientHeight * 2.2) {
+      appendLock = true;
+      if (STATE.loaded < STATE.pool.length) {
+        appendBatch();
+      } else if (!STATE.searching) {
+        // 全量放完，随机再抽一批补进去（避免卡住）
+        STATE.pool = STATE.pool.concat(shuffle(STATE.all).slice(0, STATE.pageSize));
+        appendBatch();
+        refreshIdx();
+      }
+      setTimeout(() => { appendLock = false; }, 300);
+    }
+  }, { passive: true });
+
+  function refreshIdx() {
+    const total = STATE.pool.length;
+    feed.querySelectorAll('.slide').forEach((s) => {
+      const i = Number(s.dataset.index);
+      const el = s.querySelector('.idx');
+      if (el) el.textContent = `#${i + 1} / ${total}`;
+    });
+  }
+
+  // ============================================================
+  //  键盘 / 滚轮
+  // ============================================================
+  function scrollToNext(dir) {
+    const slides = [...feed.querySelectorAll('.slide')];
+    if (!slides.length) return;
+    const cur = STATE.playing || slides[0];
+    const idx = slides.indexOf(cur);
+    const target = slides[idx + dir];
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (searchPanel.classList.contains('open')) {
+      if (e.key === 'Escape') closeSearch();
+      return;
+    }
+    if (e.key === 'ArrowDown' || e.key === 'PageDown') { e.preventDefault(); scrollToNext(1); }
+    if (e.key === 'ArrowUp'   || e.key === 'PageUp')   { e.preventDefault(); scrollToNext(-1); }
+    if (e.key === ' ') {
+      e.preventDefault();
+      if (!STATE.playing) return;
+      STATE.playing._video.paused ? playSlide(STATE.playing) : STATE.playing._video.pause();
+    }
+    if (e.key === 'm' || e.key === 'M') { if (STATE.playing) toggleMute(STATE.playing); }
+    if (e.key === 'f' || e.key === 'F') { toggleFullscreen(); }
+  });
+
+  // 电脑滚轮：一滚一条
+  let wheelLock = false;
+  feed.addEventListener('wheel', (e) => {
+    if (wheelLock) { e.preventDefault(); return; }
+    if (Math.abs(e.deltaY) < 12) return;
+    e.preventDefault();
+    wheelLock = true;
+    scrollToNext(e.deltaY > 0 ? 1 : -1);
+    setTimeout(() => { wheelLock = false; }, 550);
+  }, { passive: false });
+
+  // 全屏
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen?.().catch(() => {});
+    } else {
+      document.exitFullscreen?.().catch(() => {});
+    }
+  }
+
+  // ============================================================
+  //  搜索逻辑
+  // ============================================================
+  function renderSearchHint() {
+    searchBody.innerHTML =
+      '<div class="search-hint">' + t('hintTitle') + '<br>' +
+      t('hintCount', STATE.all.length) + '</div>';
+  }
+
+  function openSearch() {
+    searchPanel.classList.add('open');
+    searchInput.value = '';
+    clearBtn.style.display = 'none';
+    STATE.keyword = '';
+    renderSearchHint();
+    setTimeout(() => searchInput.focus(), 120);
+  }
+
+  function closeSearch() {
+    searchPanel.classList.remove('open');
+    searchInput.blur();
+  }
+
+  let searchTimer = null;
+
+  function doSearch(kw) {
+    kw = (kw || '').trim();
+    STATE.keyword = kw;
+
+    if (!kw) { renderSearchHint(); return; }
+
+    const low = kw.toLowerCase();
+    const results = STATE.all.filter((it) =>
+      String(it.title || '').toLowerCase().includes(low)
+    );
+
+    if (!results.length) {
+      searchBody.innerHTML =
+        '<div class="empty">' + t('noResult', escapeHtml(kw)) + '</div>';
+      return;
+    }
+
+    const show = results.slice(0, 200);
+    const frag = document.createDocumentFragment();
+    show.forEach((it) => {
+      const div = document.createElement('div');
+      div.className = 'result-item';
+      const thumb = proxyUrl(it.cover || '');
+      div.innerHTML = `
+        ${thumb
+          ? `<img class="result-thumb" src="${thumb}" loading="lazy" onerror="this.style.background='#222';this.removeAttribute('src')">`
+          : '<div class="result-thumb"></div>'}
+        <div class="result-info">
+          <div class="result-title">${highlight(it.title || t('untitled'), kw)}</div>
+          <div class="result-meta"><span>${t('matches', results.length)}</span></div>
+        </div>
+      `;
+      div.addEventListener('click', () => playFromSearch(results, it));
+      frag.appendChild(div);
+    });
+
+    searchBody.innerHTML = '';
+    const head = document.createElement('div');
+    head.style.cssText = 'padding:10px 16px 4px;font-size:12.5px;color:rgba(255,255,255,.4)';
+    head.textContent = t('found', results.length);
+    searchBody.appendChild(head);
+    searchBody.appendChild(frag);
+  }
+
+  // 从搜索结果进入播放
+  function playFromSearch(results, target) {
+    STATE.pool = results.slice();
+    STATE.loaded = 0;
+    STATE.searching = true;
+    feed.innerHTML = '';
+
+    appendBatch();
+
+    const idx = results.indexOf(target);
+    requestAnimationFrame(() => {
+      if (idx >= STATE.loaded) {
+        while (STATE.loaded <= idx && STATE.loaded < STATE.pool.length) {
+          appendBatch();
+        }
+      }
+      const el = feed.querySelector(`.slide[data-index="${idx}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'auto', block: 'start' });
+        setTimeout(() => playSlide(el), 100);
+      }
+    });
+
+    closeSearch();
+    toast(t('playingResult', idx + 1));
+  }
+
+  // 输入防抖
+  searchInput.addEventListener('input', (e) => {
+    const v = e.target.value;
+    clearBtn.style.display = v ? '' : 'none';
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => doSearch(v), 180);
+  });
+
+  searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      clearTimeout(searchTimer);
+      doSearch(e.target.value);
+      searchInput.blur();
+    }
+  });
+
+  clearBtn.addEventListener('click', () => {
+    searchInput.value = '';
+    clearBtn.style.display = 'none';
+    doSearch('');
+    searchInput.focus();
+  });
+
+  searchTrigger.addEventListener('click', openSearch);
+  cancelBtn.addEventListener('click', closeSearch);
+
+  // ============================================================
+  //  换一批
+  // ============================================================
+  shuffleBtn.addEventListener('click', () => {
+    STATE.searching = false;
+    STATE.keyword = '';
+    STATE.pool = shuffle(STATE.all);
+    STATE.loaded = 0;
+    feed.innerHTML = '';
+    appendBatch();
+    toast(t('shuffled'));
+  });
+
+  // ============================================================
+  //  语言切换按钮
+  // ============================================================
+langBtn.addEventListener('click', () => {
+  const next = STATE.lang === 'zh' ? 'en' : 'zh';
+  const msg = I18N[next].langSwitched;   // 直接取目标语言的提示
+  applyLanguage(next);
+  toast(msg);
+});
+  // ============================================================
+  //  页面可见性：切回前台恢复播放
+  // ============================================================
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      STATE.playing?._video?.pause();
+    } else if (STATE.playing) {
+      STATE.playing._video?.play().catch(() => {});
+    }
+  });
+
+  // ============================================================
+  //  启动
+  // ============================================================
+  (async function boot() {
+    // 读取上次语言
+    let saved = 'zh';
+    try { saved = localStorage.getItem('reels_lang') || 'zh'; } catch (e) {}
+    applyLanguage(I18N[saved] ? saved : 'zh');
+
+    const ok = await loadData();
+    if (!ok) return;
+
+    if (!STATE.all.length) {
+      splash.innerHTML =
+        '<div class="logo">X · Reels</div>' +
+        '<div class="tip" style="color:#ff7a9c">' + escapeHtml(t('emptyData')) + '</div>';
+      return;
+    }
+
+    STATE.pool = shuffle(STATE.all);
+    STATE.searching = false;
+    appendBatch();
+
+    if (STATE.playing?._video) STATE.playing._video.muted = true;
+  })();
+
+})();
+</script>
+</body>
+</html>
